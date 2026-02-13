@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>String Calculator Kata</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="calculator">
+    <h2>String Calculator</h2>
+
+    <form method="post">
+      <input
+        type="text"
+        name="numbers"
+        placeholder="e.g. 1,2 or //;\n1;2"
+        value="{{ input_value }}"
+      />
+
+      <button type="submit">Add</button>
+    </form>
+    <p class="hint">
+  Try inputs like <code>""</code>, <code>1</code>, <code>1,2</code>
+</p>
+    {% if result is not none %}
+      <div class="result success">
+        Result: {{ result }}
+      </div>
+    {% endif %}
+
+    {% if error %}
+      <div class="result error">
+        {{ error }}
+      </div>
+    {% endif %}
+  </div>
+  
+</body>
+</html>
