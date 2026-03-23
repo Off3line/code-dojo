@@ -29,7 +29,7 @@ count_neighbors() {
       [[ $dr -eq 0 && $dc -eq 0 ]] && continue
       local r=$((row + dr))
       local c=$((col + dc))
-      if (( r >= 0 && r < HEIGHT && c >= 0 && c < WIDTH )); then
+      if (( r >= 0 && r < HEIGHT &&  c >= 0 && c < WIDTH )); then
         [[ "${GRID[r]:c:1}" == "#" ]] && ((count++))
       fi
     done
@@ -81,8 +81,8 @@ display_grid() {
 }
 
 # --- Animate generations ---
-GENERATIONS=10
-SLEEP_TIME=0.5
+GENERATIONS=100
+SLEEP_TIME=0.1
 
 for gen in $(seq 1 $GENERATIONS); do
   clear
