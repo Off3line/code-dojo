@@ -1,0 +1,13 @@
+{
+  "name": "tic-tac-toe-solution",
+  "version": "1.0.0",
+  "description": "One-command launcher: runs the server + two reference clients",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix ../server install && npm --prefix client install",
+    "start": "concurrently -n server,playerA,playerB -c green,cyan,magenta \"npm --prefix ../server start\" \"npm --prefix client run dev -- --port 5173 --strictPort\" \"npm --prefix client run dev -- --port 5174 --strictPort\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
