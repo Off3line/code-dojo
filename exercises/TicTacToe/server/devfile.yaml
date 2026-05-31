@@ -1,0 +1,69 @@
+schemaVersion: 2.2.0
+metadata:
+  name: tic-tac-toe-server
+  version: 1.0.0
+  displayName: Tic-Tac-Toe Server
+  description: Authoritative socket.io server for the Tic-Tac-Toe dojo exercise
+  language: JavaScript
+  projectType: Node.js
+  tags:
+    - Node.js
+    - socket.io
+
+components:
+  - name: runtime
+    container:
+      image: registry.access.redhat.com/ubi9/nodejs-20:latest
+      memoryLimit: 1Gi
+      mountSources: true
+      # socket.io clients (the React frontends) connect here.
+      endpoints:
+        - name: server
+          targetPort: 3001
+          exposure: public
+          protocol: http
+      env:
+        - name: PORT
+          value: "3001"
+
+commands:
+  - id: install
+    exec:
+      label: Install dependencies
+      component: runtime
+      workingDir: ${PROJECT_SOURCE}/exercises/TicTacToe/server
+      commandLine: npm install
+      group:
+        kind: build
+        isDefault: true
+  - id: start
+    exec:
+      label: Start server
+      component: runtime
+      workingDir: ${PROJECT_SOURCE}/exercises/TicTacToe/server
+      commandLine: npm start
+      group:
+        kind: run
+        isDefault: true
+  - id: dev
+    exec:
+      label: Start server (watch / nodemon)
+      component: runtime
+      workingDir: ${PROJECT_SOURCE}/exercises/TicTacToe/server
+      commandLine: npm run dev
+      group:
+        kind: run
+  - id: test
+    exec:
+      label: Run tests
+      component: runtime
+      workingDir: ${PROJECT_SOURCE}/exercises/TicTacToe/server
+      commandLine: npm test
+      group:
+        kind: test
+        isDefault: true
+
+# Install dependencies automatically when the workspace starts.
+events:
+  postStart:
+    - install
