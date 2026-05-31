@@ -65,16 +65,21 @@ The exercise is intentionally incremental. You are **not expected to finish ever
 
 ## How the game works
 
-1. A player clicks **Find match** → the client emits `findMatch`. The server queues them.
-2. The server pairs the **first two** waiting players into a **match** and assigns symbols
-   (first to arrive is **X**).
-3. A **match is best-of-three rounds**. Each round is one tic-tac-toe board.
+1. A player clicks **Join lobby** → the client emits `joinLobby`. The server adds them to
+   the **lobby** (the list of waiting players) and broadcasts the updated list to everyone
+   waiting (`lobby` event).
+2. Each waiting player sees all the others (but not themselves) and can **click a player to
+   invite them** (`invite`). The invited player gets a popup (`inviteReceived`) and can
+   **accept or decline** (`respondInvite`).
+3. On accept, the server starts a **match** between those two. The **inviter plays X**, the
+   accepter plays **O**. Both leave the lobby (and their other pending invites are cancelled).
+4. A **match is best-of-three rounds**. Each round is one tic-tac-toe board.
    **First player to win 2 rounds wins the match.**
-4. A **drawn round is replayed** (nobody scores, the round number stays the same).
-5. The **starting player alternates** each round (round 1 = X starts).
-6. When someone reaches 2 wins, the server announces the result and ends the match.
-   Both players return to the menu and can **Find match** again.
-7. If a player disconnects mid-match, the match is **aborted with no winner** and the
+5. A **drawn round is replayed** (nobody scores, the round number stays the same).
+6. The **starting player alternates** each round (round 1 = X starts).
+7. When someone reaches 2 wins, the server announces the result and ends the match.
+   Both players return to the menu and can **Join lobby** again.
+8. If a player disconnects mid-match, the match is **aborted with no winner** and the
    opponent is told to return to the menu.
 
 ---
@@ -94,21 +99,29 @@ Connect to `http://localhost:3001` with `socket.io-client`. Board cells are indi
 
 ### Client → Server (what you send)
 
-| Event       | Payload            | Meaning                          |
-|-------------|--------------------|----------------------------------|
-| `findMatch` | `{ name }`         | Enter the matchmaking queue      |
-| `makeMove`  | `{ index }` (0–8)  | Place your mark in a cell        |
+| Event           | Payload                      | Meaning                                   |
+|-----------------|------------------------------|-------------------------------------------|
+| `joinLobby`     | `{ name }`                   | Enter the lobby (list of waiting players) |
+| `leaveLobby`    | _(none)_                     | Leave the lobby                           |
+| `invite`        | `{ toId }`                   | Invite a waiting player (their socket id) |
+| `respondInvite` | `{ inviteId, accept }`       | Accept (`true`) or decline (`false`)      |
+| `makeMove`      | `{ index }` (0–8)            | Place your mark in a cell                 |
 
-There is **no leave event**: you exit a match only by finishing it or disconnecting.
+Once a match starts there is **no leave event**: you exit a match only by finishing it or
+disconnecting.
 
 ### Server → Client (what you listen for)
 
-| Event          | Payload | Meaning |
-|----------------|---------|---------|
-| `queued`       | `{ position }` | You're waiting for an opponent |
-| `matchFound`   | `{ gameId, symbol, opponent, bestOf, scores, round, yourTurn }` | You've been paired. `symbol` is `"X"` or `"O"`. |
+| Event            | Payload | Meaning |
+|------------------|---------|---------|
+| `lobby`          | `{ players: [{ id, name }] }` | The current waiting players. Sent whenever the list changes. Filter out **your own** `id` (`socket.id`). |
+| `inviteReceived` | `{ inviteId, from: { id, name } }` | Someone invited you — show a popup to accept/decline. |
+| `inviteSent`     | `{ inviteId, to: { id, name } }` | Confirmation that your invite was delivered. |
+| `inviteDeclined` | `{ inviteId, by: { id, name } }` | A player declined your invitation. |
+| `inviteCancelled`| `{ inviteId, reason }` | An invite is no longer valid (`"left"`, `"matched"`, `"unavailable"`). |
+| `matchFound`     | `{ gameId, symbol, opponent, bestOf, scores, round, yourTurn }` | A match started. `symbol` is `"X"` or `"O"`. |
 | `gameState`    | `{ board, currentTurn, status, round, scores }` | Sent after every move. `board` is a 9-cell array of `null \| "X" \| "O"`. |
-| `roundOver`    | `{ winner, line, scores, round, nextRound }` | A round ended (`winner` is `"X"`, `"O"`, or `"draw"`). `line` is the 3 winning cells, or `null`. A draw has `nextRound === round`. A fresh `gameState` follows. |
+| `roundOver`    | `{ winner, line, board, scores, round, nextRound }` | A round ended (`winner` is `"X"`, `"O"`, or `"draw"`). `board` is the final 9-cell board (incl. the winning move). `line` is the 3 winning cells, or `null`. A draw has `nextRound === round`. Unless the match is over, a fresh `gameState` follows for the next round. |
 | `matchOver`    | `{ matchWinner, scores }` | The match is decided. The server then ends the game. |
 | `errorMsg`     | `{ message }` | Your move was rejected (out of turn, occupied cell, etc.). |
 | `opponentLeft` | _(none)_ | Your opponent disconnected; the match was aborted. Return to the menu. |
@@ -121,7 +134,20 @@ There is **no leave event**: you exit a match only by finishing it or disconnect
 import { io } from "socket.io-client";
 const socket = io("http://localhost:3001");
 
-socket.emit("findMatch", { name: "Alice" });
+socket.emit("joinLobby", { name: "Alice" });
+
+socket.on("lobby", ({ players }) => {
+  // render everyone except yourself; clicking a player invites them
+  const others = players.filter((p) => p.id !== socket.id);
+});
+
+// invite a player you clicked:
+socket.emit("invite", { toId: somePlayerId });
+
+socket.on("inviteReceived", ({ inviteId, from }) => {
+  // show a popup; on the user's choice:
+  socket.emit("respondInvite", { inviteId, accept: true /* or false */ });
+});
 
 socket.on("gameState", ({ board, currentTurn, round, scores }) => {
   // render the 3x3 board + scoreboard
@@ -140,15 +166,17 @@ rules. The real goals are to:
 
 - Model UI from server state (board, turn, score, round) rather than local guesses
 - Use React state and effects to subscribe to a live event stream
-- Handle the full lifecycle: menu → queued → playing → round results → match result → menu
+- Handle the full lifecycle: lobby → invite/accept → playing → round results → match result → lobby
 - Show useful feedback (whose turn, illegal-move errors, opponent left)
 
 Suggested increments:
 
-1. Show connection status and a **Find match** button (the starter already does this).
-2. Render the board from `gameState.board`.
-3. Send `makeMove` when you click an empty cell; only allow it when it's your turn.
-4. Add the scoreboard: current round and `scores`.
+1. Show connection status and a **Join lobby** button (the starter already does this).
+2. Render the lobby list from `lobby.players` (hide yourself); click a player to `invite` them.
+3. Handle `inviteReceived` with an accept/decline popup; emit `respondInvite`.
+4. Render the board from `gameState.board`.
+5. Send `makeMove` when you click an empty cell; only allow it when it's your turn.
+6. Add the scoreboard: current round and `scores`.
 5. Handle `roundOver`, `matchOver`, and `opponentLeft` with clear UI transitions.
 6. Polish: highlight the winning `line`, disable the board between rounds, etc.
 

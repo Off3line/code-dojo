@@ -24,14 +24,18 @@ function roomOf(gameId) {
 }
 
 function createMatchmaker(io) {
-  /** @type {{ socketId: string, name: string }[]} */
-  const queue = [];
+  /** @type {Map<string, { name: string }>} socketId -> lobby entry (waiting players) */
+  const lobby = new Map();
+  /** @type {Map<string, { from, fromName, to, toName }>} inviteId -> invitation */
+  const invites = new Map();
   /** @type {Map<string, object>} gameId -> Game */
   const games = new Map();
   /** @type {Map<string, string>} socketId -> gameId */
   const socketToGame = new Map();
 
+  const LOBBY_ROOM = "lobby";
   let nextGameId = 1;
+  let nextInviteId = 1;
 
   /** Snapshot a game into the public `gameState` payload shape. */
   function gameStatePayload(game) {
@@ -48,20 +52,104 @@ function createMatchmaker(io) {
     io.to(roomOf(game.id)).emit("gameState", gameStatePayload(game));
   }
 
-  /** Add a player to the queue; pair the first two waiting players. */
-  function findMatch(socket, name) {
-    // Ignore players already in a game or already queued.
-    if (socketToGame.has(socket.id)) return;
-    if (queue.some((p) => p.socketId === socket.id)) return;
+  /** Send the current list of waiting players to everyone in the lobby. */
+  function broadcastLobby() {
+    const players = [...lobby.entries()].map(([id, entry]) => ({ id, name: entry.name }));
+    io.to(LOBBY_ROOM).emit("lobby", { players });
+  }
 
-    queue.push({ socketId: socket.id, name: String(name || "Anonymous") });
-    socket.emit("queued", { position: queue.length });
-
-    if (queue.length >= 2) {
-      const first = queue.shift();
-      const second = queue.shift();
-      startGame(first, second);
+  /** Cancel every pending invite that involves `socketId`, notifying the other party. */
+  function cancelInvitesInvolving(socketId, reason) {
+    for (const [inviteId, inv] of invites) {
+      if (inv.from !== socketId && inv.to !== socketId) continue;
+      const otherId = inv.from === socketId ? inv.to : inv.from;
+      io.to(otherId).emit("inviteCancelled", { inviteId, reason });
+      invites.delete(inviteId);
     }
+  }
+
+  /** Remove a player from the lobby (and the lobby room). */
+  function removeFromLobby(socketId) {
+    if (!lobby.delete(socketId)) return;
+    const s = io.sockets.sockets.get(socketId);
+    if (s) s.leave(LOBBY_ROOM);
+  }
+
+  /** Enter the waiting list. */
+  function joinLobby(socket, name) {
+    if (socketToGame.has(socket.id)) return; // already in a game
+    lobby.set(socket.id, { name: String(name || "Anonymous") });
+    socket.join(LOBBY_ROOM);
+    broadcastLobby();
+  }
+
+  /** Leave the waiting list (cancels any invites to/from this player). */
+  function leaveLobby(socket) {
+    removeFromLobby(socket.id);
+    cancelInvitesInvolving(socket.id, "left");
+    broadcastLobby();
+  }
+
+  /** Invite another waiting player to a match. */
+  function invite(socket, toId) {
+    if (!lobby.has(socket.id)) {
+      socket.emit("errorMsg", { message: "Join the lobby before inviting." });
+      return;
+    }
+    if (toId === socket.id || !lobby.has(toId)) {
+      socket.emit("errorMsg", { message: "That player is no longer available." });
+      return;
+    }
+    // Don't stack duplicate invites between the same two players (same direction).
+    for (const inv of invites.values()) {
+      if (inv.from === socket.id && inv.to === toId) return;
+    }
+
+    const inviteId = String(nextInviteId++);
+    const fromName = lobby.get(socket.id).name;
+    const toName = lobby.get(toId).name;
+    invites.set(inviteId, { from: socket.id, fromName, to: toId, toName });
+
+    io.to(toId).emit("inviteReceived", { inviteId, from: { id: socket.id, name: fromName } });
+    socket.emit("inviteSent", { inviteId, to: { id: toId, name: toName } });
+  }
+
+  /** Accept or decline a received invitation. */
+  function respondInvite(socket, inviteId, accept) {
+    const inv = invites.get(inviteId);
+    if (!inv || inv.to !== socket.id) {
+      socket.emit("errorMsg", { message: "That invitation is no longer available." });
+      return;
+    }
+    invites.delete(inviteId);
+
+    if (!accept) {
+      io.to(inv.from).emit("inviteDeclined", {
+        inviteId,
+        by: { id: inv.to, name: inv.toName },
+      });
+      return;
+    }
+
+    // Accepted — both players must still be waiting.
+    if (!lobby.has(inv.from) || !lobby.has(inv.to)) {
+      socket.emit("errorMsg", { message: "That player is no longer available." });
+      io.to(inv.from).emit("inviteCancelled", { inviteId, reason: "unavailable" });
+      return;
+    }
+
+    const inviter = { socketId: inv.from, name: inv.fromName };
+    const invitee = { socketId: inv.to, name: inv.toName };
+
+    // Pull both out of the lobby and cancel their other pending invites.
+    removeFromLobby(inviter.socketId);
+    removeFromLobby(invitee.socketId);
+    cancelInvitesInvolving(inviter.socketId, "matched");
+    cancelInvitesInvolving(invitee.socketId, "matched");
+
+    // The inviter plays X (they started it); the accepter plays O.
+    startGame(inviter, invitee);
+    broadcastLobby();
   }
 
   function startGame(playerX, playerO) {
@@ -172,6 +260,7 @@ function createMatchmaker(io) {
       io.to(roomOf(game.id)).emit("roundOver", {
         winner: "draw",
         line: null,
+        board: game.board, // the final (full) board of this round
         scores: { ...game.scores },
         round: game.round,
         nextRound: game.round, // replays the same round
@@ -188,6 +277,7 @@ function createMatchmaker(io) {
     io.to(roomOf(game.id)).emit("roundOver", {
       winner,
       line,
+      board: game.board, // the final board, including the winning move
       scores: { ...game.scores },
       round: game.round,
       nextRound: matchWinner ? game.round : game.round + 1,
@@ -203,11 +293,13 @@ function createMatchmaker(io) {
     broadcastState(game);
   }
 
-  /** A socket dropped: abort its match (no winner) and notify the opponent. */
+  /** A socket dropped: leave the lobby, cancel invites, and abort any match. */
   function handleDisconnect(socket) {
-    // Remove from queue if waiting.
-    const qi = queue.findIndex((p) => p.socketId === socket.id);
-    if (qi !== -1) queue.splice(qi, 1);
+    // Remove from the lobby and tear down its invitations.
+    const wasWaiting = lobby.has(socket.id);
+    removeFromLobby(socket.id);
+    cancelInvitesInvolving(socket.id, "left");
+    if (wasWaiting) broadcastLobby();
 
     const gameId = socketToGame.get(socket.id);
     const game = gameId && games.get(gameId);
@@ -220,12 +312,16 @@ function createMatchmaker(io) {
   }
 
   return {
-    findMatch,
+    joinLobby,
+    leaveLobby,
+    invite,
+    respondInvite,
     makeMove,
     handleDisconnect,
     // exposed for tests / inspection
     _games: games,
-    _queue: queue,
+    _lobby: lobby,
+    _invites: invites,
   };
 }
 

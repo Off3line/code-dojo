@@ -4,13 +4,17 @@ import { io } from "socket.io-client";
 // ---------------------------------------------------------------------------
 // This is a DELIBERATELY MINIMAL skeleton. It only:
 //   1. connects to the server,
-//   2. lets you join the matchmaking queue ("Find match"),
+//   2. lets you join the lobby ("Join lobby"),
 //   3. dumps every event the server sends into a log.
 //
-// There is NO board, NO scoreboard, NO move buttons. That is YOUR job.
+// There is NO lobby list, NO invite popup, NO board. That is YOUR job.
 // Use the socket contract in the README to build the real game with React.
 //
 // Hints to get you going:
+//   - listen for "lobby" and render players (hide yourself: p.id !== socket.id);
+//     clicking a player sends: socket.emit("invite", { toId: p.id })
+//   - on "inviteReceived" show a popup, then:
+//     socket.emit("respondInvite", { inviteId, accept: true /* or false */ })
 //   - listen for "gameState" and render `board` (a 9-cell array) as a 3x3 grid
 //   - send a move with: socket.emit("makeMove", { index })  // index 0..8
 //   - show the scoreboard from "gameState".scores and .round
@@ -22,7 +26,11 @@ const SERVER_URL = "http://localhost:3001";
 // Every server -> client event from the contract. Logging them all is a handy
 // way to *see* the protocol before you build UI for it.
 const SERVER_EVENTS = [
-  "queued",
+  "lobby",
+  "inviteReceived",
+  "inviteSent",
+  "inviteDeclined",
+  "inviteCancelled",
   "matchFound",
   "gameState",
   "roundOver",
@@ -52,7 +60,7 @@ export default function App() {
     return () => socket.disconnect();
   }, []);
 
-  const findMatch = () => socketRef.current?.emit("findMatch", { name });
+  const joinLobby = () => socketRef.current?.emit("joinLobby", { name });
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 640, margin: "2rem auto" }}>
@@ -63,8 +71,8 @@ export default function App() {
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
-        <button onClick={findMatch} disabled={!connected}>
-          Find match
+        <button onClick={joinLobby} disabled={!connected}>
+          Join lobby
         </button>
       </div>
 
