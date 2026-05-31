@@ -8,6 +8,9 @@ const { Server } = require("socket.io");
 const { createMatchmaker } = require("./matchmaking");
 
 const PORT = process.env.PORT || 3001;
+// Bind address. 0.0.0.0 = listen on all interfaces (required inside a container
+// so connections from outside reach the server). Override with HOST if needed.
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Build (but do NOT start) the HTTP + socket.io server. Exported so tests can
 // boot it on an ephemeral port; `npm start` calls it below and listens.
@@ -56,8 +59,8 @@ function createGameServer({ log = true } = {}) {
 
 if (require.main === module) {
   const { server } = createGameServer();
-  server.listen(PORT, () => {
-    console.log(`Tic-Tac-Toe server listening on http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`Tic-Tac-Toe server listening on http://${HOST}:${PORT}`);
   });
 }
 
