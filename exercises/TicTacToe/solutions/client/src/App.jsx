@@ -177,7 +177,11 @@ export default function App() {
           {others.map((p) => (
             <li key={p.id}>
               <span>{p.name}</span>
-              <button onClick={() => invite(p.id)} disabled={sentTo?.inviteId != null}>
+              <button
+                data-testid={`invite-${p.id}`}
+                onClick={() => invite(p.id)}
+                disabled={sentTo?.inviteId != null}
+              >
                 {sentTo && sentTo.name === p.name ? "Invited…" : "Challenge"}
               </button>
             </li>
@@ -195,8 +199,14 @@ export default function App() {
                 <strong>{inv.from.name}</strong> challenges you to a match!
               </p>
               <div className="menu">
-                <button onClick={() => respond(inv.inviteId, true)}>Accept</button>
-                <button className="ghost" onClick={() => respond(inv.inviteId, false)}>
+                <button data-testid="invite-accept" onClick={() => respond(inv.inviteId, true)}>
+                  Accept
+                </button>
+                <button
+                  data-testid="invite-decline"
+                  className="ghost"
+                  onClick={() => respond(inv.inviteId, false)}
+                >
                   Decline
                 </button>
               </div>
@@ -212,7 +222,7 @@ export default function App() {
     <div className="app">
       <h1>Tic-Tac-Toe</h1>
       <p className="status">
-        You are <strong>{symbol}</strong> vs {opponent || "opponent"}
+        You are <strong data-testid="my-symbol">{symbol}</strong> vs {opponent || "opponent"}
       </p>
 
       <div className="scoreboard">
@@ -233,6 +243,7 @@ export default function App() {
           return (
             <button
               key={i}
+              data-testid={`cell-${i}`}
               className={`cell${cell ? " filled" : ""}${isWin ? " win" : ""}`}
               onClick={() => play(i)}
               disabled={!myTurn || cell !== null}

@@ -19,7 +19,7 @@ const {
 const BEST_OF = 3;
 const WINS_NEEDED = 2;
 
-function roomOf(gameId) {
+  function roomOf(gameId) {
   return `game:${gameId}`;
 }
 
@@ -56,6 +56,9 @@ function createMatchmaker(io) {
   function broadcastLobby() {
     const players = [...lobby.entries()].map(([id, entry]) => ({ id, name: entry.name }));
     io.to(LOBBY_ROOM).emit("lobby", { players });
+    console.log(
+      `[lobby] ${players.length} waiting: ${players.map((p) => p.name).join(", ") || "(none)"}`
+    );
   }
 
   /** Cancel every pending invite that involves `socketId`, notifying the other party. */

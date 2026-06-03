@@ -177,15 +177,51 @@ Suggested increments:
 4. Render the board from `gameState.board`.
 5. Send `makeMove` when you click an empty cell; only allow it when it's your turn.
 6. Add the scoreboard: current round and `scores`.
-5. Handle `roundOver`, `matchOver`, and `opponentLeft` with clear UI transitions.
-6. Polish: highlight the winning `line`, disable the board between rounds, etc.
+7. Handle `roundOver`, `matchOver`, and `opponentLeft` with clear UI transitions.
+8. Polish: highlight the winning `line`, disable the board between rounds, etc.
 
 If your UI faithfully reflects the server's state and a full best-of-three plays cleanly,
 you are succeeding.
 
 ---
 
-## About the server
+## Test your client before connecting
+
+The starter ships with a **pre-flight test suite** so you can validate your client
+**offline — no server needed**. It mocks `socket.io-client`, so the tests run instantly and
+let you confirm everything is wired up before you point at the real server.
+
+```bash
+cd client
+npm install      # first time only
+npm test         # run once
+npm run test:watch   # re-run on every change (great while building)
+```
+
+There are two tiers:
+
+- **`test/readiness.test.jsx`** — a smoke check that your client loads, survives every
+  server event without crashing, and joins the lobby. **These pass on the starter already.**
+  If one goes red, you removed some necessary plumbing.
+- **`test/ui.test.jsx`** — these **fail at first** and turn green as you build the lobby
+  list, the invite popup, and the board. They describe the behavior the server expects from
+  your UI.
+
+### The test "UI contract"
+
+So the tests can find elements in **your** design, expose this minimal set of hooks. Style
+everything however you like — only these identifiers matter:
+
+| What | Hook the tests look for |
+|------|-------------------------|
+| Join button | a `<button>` whose text is **"Join lobby"** (+ a text input for the name) |
+| Invitable player | `data-testid="invite-<playerId>"` on each other player's invite control |
+| Invitation popup | `data-testid="invite-accept"` and `data-testid="invite-decline"` |
+| Board cells | `data-testid="cell-0"` … `data-testid="cell-8"` |
+| Your symbol | `data-testid="my-symbol"` (renders `"X"` or `"O"`) |
+
+`test/mockSocket.js` is the fake socket — you can read it to see how the tests simulate the
+server, but you shouldn't need to edit it.
 
 The server is the source of truth. Its rules live in `server/engine.js` (pure functions,
 unit-tested) and `server/matchmaking.js` (queue + round/match flow). You are encouraged to

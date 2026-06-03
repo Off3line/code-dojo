@@ -7,4 +7,11 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
+  // Runs the same pre-flight suite participants get, proving the reference
+  // client satisfies the test-ID contract end-to-end.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./test/setup.js",
+  },
 });
